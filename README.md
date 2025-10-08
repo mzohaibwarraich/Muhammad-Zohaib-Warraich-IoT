@@ -1,3 +1,6 @@
 # Muhammad-Zohaib-Warraich-IoT
-Hi! I am Muhammad Zohaib Warraich. This is repository for the course IoT &amp; Embedded Systems by Nasir Mehmood
-This Repositery contains all the Tasks and Homeworks
+<div>
+<p>Hi! I am Muhammad Zohaib Warraich.</p>
+<p>This is the repository for IoT &amp; Embedded Systems</p>
+<p>This Repositery contains all the Tasks and Homeworks</p>
+</div>
