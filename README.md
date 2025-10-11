@@ -7,7 +7,7 @@
 </div>
 
 ---
-# Uploaded Weeks
+# Uploaded Week 
 <div>
   <p>Week-1</p>
   <p>Week-4</p>
