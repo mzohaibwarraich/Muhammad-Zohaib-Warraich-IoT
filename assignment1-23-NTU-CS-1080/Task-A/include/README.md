@@ -21,7 +21,7 @@ Task-A/
 ## 🔗 Wokwi Link
 <div>
     <p>Assignment 1 Task A project link: 
-        <a href="https://wokwi.com/projects/444997908922052609" target="">
+        <a target=" " href="https://wokwi.com/projects/444997908922052609">
             <u> https://wokwi.com/projects/444997908922052609
             </u>
         </a>
