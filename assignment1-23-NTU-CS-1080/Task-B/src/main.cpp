@@ -1,3 +1,6 @@
+// Name: Muhammad Zohaib Warraich
+// Roll no: 23-NTU-CS-1080 
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -7,7 +10,7 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 
-#define blueLed 18 // Setting up GPIO pin for blue Led
+#define yellowLED 19 // Setting up GPIO pin for Yellow Led
 #define blueButton 25 // Setting up GPIO pin for blue Button
 #define buzzer 27 // Setting up GPIO pin for Buzzer
 
@@ -18,28 +21,33 @@ bool longPress = false; // Flag to track if long press was detected
 
 const unsigned long longPressTime = 2000;  // 2 seconds for long press
 
-void displayMessage(const char* message) {
-  display.clearDisplay(); // Clear the display
-  display.setTextSize(1); // Text size 1
+// Simple but visually better display message
+void displayMessage(const char* line1, const char* line2 = "") {
+  display.clearDisplay();
+  // First line will be bold and large
+  display.setTextSize(2);  // Large text size
   display.setTextColor(SSD1306_WHITE); // White text
-  display.setCursor(0, 10); // Start at top-left corner
-  display.println(message); // Print the message
-  display.display(); // Update the display
+  display.setCursor(15, 10); // Centered cursor
+  display.println(line1); // Print first line
+  // Second line will be smaller and placed below First line
+  if (line2[0] != '\0') { // If second line is not empty
+    display.setTextSize(1); // Smaller text size
+    display.setCursor(20, 40); // Centered cursor for second line
+    display.println(line2); // Print second line
+  }
+  display.display();
 }
 
 void setup() {
   Serial.begin(115200);
-
-  pinMode(blueLed, OUTPUT); // setting up blue LED pin for getting output
+  pinMode(yellowLED, OUTPUT); // setting up blue LED pin for getting output
   pinMode(buzzer, OUTPUT); // setting up buzzer pin for getting output
   pinMode(blueButton, INPUT_PULLUP); // Initialize blue button pin for taking input
-
-  // Initialize OLED
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("OLED not found!"); // OLED not found
     while (true); // Halt execution if OLED is not found
   }
-  displayMessage("Initializing...");
+  displayMessage("Ready", "Press the Button");
 }
 
 void loop() {
@@ -55,14 +63,12 @@ void loop() {
   // Check for long press
   if (buttonState == LOW && buttonPressed) {
     if ((millis() - pressTime > longPressTime)) { // If pressed for more than 2 seconds
-      displayMessage("Long Press: buzzer ON"); // Update display
-
+      displayMessage("Long Press", "Buzzer ON");
       tone(buzzer, 1000);   // It will play tone of 1 kHz for 1 second
-      delay(1000); // Wait for 1 second
+      delay(1000);
       noTone(buzzer); // Stop the tone
-
-      displayMessage("buzzer Done"); // Update display
-      delay(300); // Brief delay to show message
+      displayMessage("Completed", "Buzzer OFF");
+      delay(500); // Brief delay to show message
       longPress = true; // Set long press flag
     }
   }
@@ -71,11 +77,15 @@ void loop() {
   if (buttonState == HIGH && buttonPressed) {
     if (!longPress) { // If it was not a long press
       ledState = !ledState; // Toggle LED state
-      digitalWrite(blueLed, ledState); // Update LED state
-      displayMessage(ledState ? "Short Press: LED ON" : "Short Press: LED OFF"); // Update display
+      digitalWrite(yellowLED, ledState); // Update LED state
+      if (ledState==HIGH) { // If LED is on
+        displayMessage("LED ON", "Short Press");
+      } else { 
+        displayMessage("LED OFF", "Short Press");
+      }
     }
 
     buttonPressed = false; // Reset button pressed flag
-    delay(100);  // Debounce delay
+    delay(300);  // Debounce delay
   }
 }
