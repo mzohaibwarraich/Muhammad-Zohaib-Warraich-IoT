@@ -1,196 +1,158 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // No reset pin
+#define yellowLED   19 // GPIO19 for Yellow LED
+#define greenLED  18 // GPIO18 for Green LED
+#define redLED   17 // GPIO17 for Red LED
+#define MODE_BUTTON   25 // GPIO25 for Mode Button
+#define RESET_BUTTON  26 // GPIO26 for Reset Button
+#define PWM_YELLOW_CHANNEL   0 // PWM channel for Yellow LED
+#define PWM_GREEN_CHANNEL 1 // PWM channel for Green LED
+#define PWM_RED_CHANNEL  2 // PWM channel for Red LED
+#define PWM_FREQ     5000 // 5 kHz PWM frequency
+#define PWM_RES     10 // 10-bit resolution
+hw_timer_t *blinkTimer = nullptr; // Timer for Blink mode
+volatile int blinkStep = 0; // Step in Blink sequence
+int currentMode = 0; // 0: All OFF, 1: Alternate Blink, 2: All ON, 3: PWM Fading
+bool prevBtnMode = HIGH; // Previous state of Mode button
+bool prevBtnReset = HIGH; // Previous state of Reset button
+unsigned long lastDebounceTime = 0; // For button debounce
+const int debounceDelay = 500; // 500ms debounce delay
 
-#define blueLed 18    // GPIO pin for blue LED
-#define redLed 17     // GPIO pin for red LED
-#define orangeLed 16  // GPIO pin for orange LED
-#define blueButton 25 // GPIO pin for blue button
-#define redButton 26  // GPIO pin for red button
-
-int mode = 1;               // mode counter starting from 1
-int brightness = 0;         // for PWM fade
-bool toggle = false;        // for alternate blink
-unsigned long lastTime = 0; // for non-blocking timing
-
-int frequency = 5000;       // PWM frequency
-int resolution = 8;         // PWM resolution
-int channelBlueLed = 0;     // PWM channel for blue LED
-int channelRedLed = 1;      // PWM channel for red LED
-int channelOrangeLed = 2;   // PWM channel for orange LED
-int currentLED = 0; // to track which LED to turn on
-
-// For debounce
-volatile unsigned long lastBluePress = 0; // timestamp of last blue button press
-volatile unsigned long lastRedPress = 0;  // timestamp of last red button press
-
-int blueBrightness = 0, blueFade = 20;
-int orangeBrightness = 0, orangeFade = 20;
-int redBrightness = 0, redFade = 20;
-
-unsigned long lastBlueTime = 0;
-unsigned long lastRedTime = 0;
-unsigned long lastOrangeTime = 0;
-
-// for displaying mode on OLED display
-void updateDisplay()
-{
-  display.clearDisplay();              // clear previous display
-  display.setTextSize(1);              // text size set to 1
-  display.setTextColor(SSD1306_WHITE); // draw white text
-  display.setCursor(0, 10);            // cursor for writing text will start at top-left corner
-
-  if (mode == 1)
-    display.print("Mode 1: Both OFF");
-  else if (mode == 2)
-    display.print("Mode 2: Alt Blink");
-  else if (mode == 3)
-    display.print("Mode 3: Both ON");
-  else if (mode == 4)
-    display.print("Mode 4: PWM Fade");
-
-  display.display(); // actually display all of the above
+void displayMode() { // Function: Display current mode on OLED
+  oled.clearDisplay(); // Clear display
+  oled.setTextSize(2); // Set text size
+  oled.setTextColor(SSD1306_WHITE); // Set text color to white
+  oled.setCursor(0, 0); // Set cursor to top-left
+  oled.println(" LED Modes"); // Title
+  oled.drawLine(0, 18, 127, 18, SSD1306_WHITE); // Draw line under title
+  oled.setTextSize(1); // Set smaller text size
+  oled.setCursor(10, 30); // Set cursor for mode display
+  switch (currentMode) { // Display mode description
+    case 0: // All LEDs OFF
+      oled.print("Mode 1: All OFF"); // Display mode 1
+      break; 
+    case 1: // Alternate Blink LEDs
+      oled.print("Mode 2: All blinking"); // Display mode 2
+      break;
+    case 2: // All LEDs ON
+      oled.print("Mode 3: All ON"); // Display mode 3
+      break;
+    case 3: // PWM Fading LEDs
+      oled.print("Mode 4: PWM Fading"); // Display mode 4
+      break;
+  }
+  oled.display(); // Update display
 }
 
-// ISR for Blue button (next mode)
-void IRAM_ATTR bluePressed()
-{
-  if (millis() - lastBluePress > 300)
-  {                           // debounce
-    mode++;                   // go to next mode
-    if (mode > 4)             // start from mode 1 after mode 4
-      mode = 1;               //
-    lastBluePress = millis(); // milis() equals to current time in milliseconds
+void IRAM_ATTR onBlinkTimer() { // Timer ISR for Blink mode
+  if (currentMode == 2) return;  // Only run in Sequence mode
+  blinkStep = (blinkStep + 1) % 3;  // 0→1→2→0 repeat
+  switch (blinkStep) { // Set LED states based on blink step
+    case 0: // Yellow ON
+      ledcWrite(PWM_YELLOW_CHANNEL, 255); // Yellow ON
+      ledcWrite(PWM_GREEN_CHANNEL, 0); // Green OFF
+      ledcWrite(PWM_RED_CHANNEL, 0); // Red OFF
+      break;
+    case 1: // Green ON
+      ledcWrite(PWM_YELLOW_CHANNEL, 0); // Yellow OFF
+      ledcWrite(PWM_GREEN_CHANNEL, 255); // Green ON
+      ledcWrite(PWM_RED_CHANNEL, 0); // Red OFF
+      break;
+    case 2: // Red ON
+      ledcWrite(PWM_YELLOW_CHANNEL, 0); // Yellow OFF
+      ledcWrite(PWM_GREEN_CHANNEL, 0); // Green OFF
+      ledcWrite(PWM_RED_CHANNEL, 255); // Red ON
+      break;
   }
 }
 
-// ISR for Red button (reset to mode 1)
-void IRAM_ATTR redPressed()
-{
-  if (millis() - lastRedPress > 300)
-  { // debounce
-    mode = 1;
-    lastRedPress = millis(); // update last press time
+void setup() {
+  Serial.begin(115200); // Initialize Serial 
+  pinMode(yellowLED, OUTPUT); // Set Yellow LED pin as OUTPUT
+  pinMode(greenLED, OUTPUT); // Set Green LED pin as OUTPUT
+  pinMode(redLED, OUTPUT); // Set Red LED pin as OUTPUT
+  pinMode(MODE_BUTTON, INPUT_PULLUP); // Set Mode Button pin as INPUT_PULLUP
+  pinMode(RESET_BUTTON, INPUT_PULLUP); // Set Reset Button pin as INPUT_PULLUP
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED initialization failed!"));
+    for (;;) {}
   }
+  oled.clearDisplay(); 
+  oled.display();
+  ledcSetup(PWM_YELLOW_CHANNEL, PWM_FREQ, PWM_RES); // Setup PWM for Yellow LED
+  ledcSetup(PWM_GREEN_CHANNEL, PWM_FREQ, PWM_RES); // Setup PWM for Green LED
+  ledcSetup(PWM_RED_CHANNEL, PWM_FREQ, PWM_RES); // Setup PWM for Red LED
+  ledcAttachPin(yellowLED, PWM_YELLOW_CHANNEL); // Attach Yellow LED pin to PWM channel
+  ledcAttachPin(greenLED, PWM_GREEN_CHANNEL); // Attach Green LED pin to PWM channel
+  ledcAttachPin(redLED, PWM_RED_CHANNEL); // Attach Red LED pin to PWM channel
+  blinkTimer = timerBegin(0, 80, true); // Initialize timer (80MHz / 80 = 1MHz)
+  timerAttachInterrupt(blinkTimer, &onBlinkTimer, true); // Attach ISR
+  timerAlarmWrite(blinkTimer, 500000, true); // Set alarm to 500ms
+  timerAlarmEnable(blinkTimer); // Enable the alarm
+  ledcWrite(PWM_YELLOW_CHANNEL, 0); // Turn OFF Yellow LED
+  ledcWrite(PWM_GREEN_CHANNEL, 0); // Turn OFF Green LED
+  ledcWrite(PWM_RED_CHANNEL, 0); // Turn OFF Red LED
+  displayMode();
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  // setting up pin modes for buttons
-  pinMode(blueButton, INPUT_PULLUP);
-  pinMode(redButton, INPUT_PULLUP);
-
-  // Setting up interrupts for buttons to call the ISRs functions whenever the button is clicked
-  attachInterrupt(digitalPinToInterrupt(blueButton), bluePressed, FALLING); // calling the ISR function when the blue button is pressed and FALLING means when the button is pressed the pin goes from HIGH to LOW
-
-  attachInterrupt(digitalPinToInterrupt(redButton), redPressed, FALLING); // calling the ISR function when the red button is pressed and FALLING means when the button is pressed the pin goes from HIGH to LOW
-
-  // Setting up PWM for LEDs and attaching them to the pins of the ESP32
-  ledcSetup(channelBlueLed, frequency, resolution);   // setting up PWM channel properties for blue LED
-  ledcSetup(channelRedLed, frequency, resolution);    // setting up PWM channel properties for red LED
-  ledcSetup(channelOrangeLed, frequency, resolution); // setting up PWM channel properties for orange LED
-  ledcAttachPin(blueLed, channelBlueLed);             // attaching the blue LED to the PWM channel
-  ledcAttachPin(redLed, channelRedLed);               // attaching the red LED to the PWM channel
-  ledcAttachPin(orangeLed, channelOrangeLed);         // attaching the orange LED to the PWM channel
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-  {                                    // initialize OLED display with I2C address 0x3C
-    Serial.println("OLED not found!"); // if OLED display is not found, print error message
-    while (true); // ESP32 will go in infinite loop here if OLED display is not found
-  }
-
-  updateDisplay(); // initial display update
-}
-void mode1()
-{
-  ledcWrite(channelBlueLed, LOW);   // turn off blue LED
-  ledcWrite(channelRedLed, LOW);    // turn off red LED
-  ledcWrite(channelOrangeLed, LOW); // turn off orange LED
-}
-void mode2()
-{
-  if (millis() - lastTime > 500) // toggle every 500 ms
-    { 
-      // set all LED to off at first
-      ledcWrite(channelBlueLed, 0);
-      ledcWrite(channelRedLed, 0);
-      ledcWrite(channelOrangeLed, 0);
-
-      // turn on the current LED
-      if (currentLED == 0) 
-        ledcWrite(channelOrangeLed, 255); // turn on orange LED
-      else if (currentLED == 1) //
-        ledcWrite(channelBlueLed, 255); // turn on blue LED
-      else if (currentLED == 2) 
-        ledcWrite(channelRedLed, 255); // turn on red LED
-
-      // Move to next LED
-      currentLED++;
-      if (currentLED > 2)
-        currentLED = 0; // reset to first LED after reaching to last LED
-      lastTime = millis(); // update lastTime
+void loop() {
+  bool btnMode = digitalRead(MODE_BUTTON); // Read Mode button state
+  bool btnReset = digitalRead(RESET_BUTTON); // Read Reset button state
+  if (millis() - lastDebounceTime > debounceDelay) { // Debounce check
+    if (btnMode == LOW && prevBtnMode == HIGH) { // Mode button pressed
+      currentMode = (currentMode + 1) % 4; // Cycle through modes 0-3
+      blinkStep = 0; // Reset blink step
+      displayMode(); // Update OLED display
+      lastDebounceTime = millis(); // Update debounce timer
     }
-}
-void mode3()
-{
-  ledcWrite(channelBlueLed, 255);   // turn on blue LED
-  ledcWrite(channelRedLed, 255);    // turn on red LED
-  ledcWrite(channelOrangeLed, 255); // turn on orange LED
-}
-void mode4()
-{
-  if (millis() - lastBlueTime > 10) {
-      blueBrightness += blueFade; // increase brightness
-      if (blueBrightness <= 0 || blueBrightness >= 255) 
-        blueFade = -blueFade; // reverse fade direction at limits
-      ledcWrite(channelBlueLed, blueBrightness); // set blue LED brightness
-      lastBlueTime = millis(); // update last blue time
+    if (btnReset == LOW && prevBtnReset == HIGH) { // Reset button pressed
+      currentMode = 0; // Reset to Mode 0
+      blinkStep = 0; // Reset blink step
+      displayMode(); // Update OLED display
+      lastDebounceTime = millis(); // Update debounce timer
     }
-    if (millis() - lastRedTime > 35) {
-      redBrightness += redFade; // increase brightness
-      if (redBrightness <= 0 || redBrightness >= 255) 
-        redFade = -redFade; // reverse fade direction at limits
-      ledcWrite(channelRedLed, redBrightness); // set red LED brightness
-      lastRedTime = millis(); 
-    }
-    if (millis() - lastOrangeTime > 60) {
-      orangeBrightness += orangeFade; // increase brightness
-      if (orangeBrightness <= 0 || orangeBrightness >= 255) 
-        orangeFade = -orangeFade; // reverse fade direction at limits
-      ledcWrite(channelOrangeLed, orangeBrightness); // set orange LED brightness
-      lastOrangeTime = millis();
-    }
-}
-void loop()
-{
-  updateDisplay(); // update display with current mode
-
-  // Mode 1: Both off
-  if (mode == 1)
-  {
-    mode1();
   }
 
-  // Mode 2: Alternate blink (non-blocking)
-  else if (mode == 2)
-  {
-    mode2();
-  }
+  prevBtnMode = btnMode;
+  prevBtnReset = btnReset;
 
-  // Mode 3: Both ON
-  else if (mode == 3)
-  {
-    mode3();
-  }
+  switch (currentMode) {
+    case 0: // Mode 1: All LEDs OFF
+      ledcWrite(PWM_YELLOW_CHANNEL, 0); // Yellow OFF
+      ledcWrite(PWM_GREEN_CHANNEL, 0); // Green OFF
+      ledcWrite(PWM_RED_CHANNEL, 0); // Red OFF
+      break;
 
-  // Mode 4: PWM Fade
-  else if (mode == 4)
-  {
-    mode4();
+    case 1: // Mode 2: Alternate Blink Mode which is gonna handle in Timer ISR
+      break;
+
+    case 2: // Mode 3: All LEDs ON
+      ledcWrite(PWM_YELLOW_CHANNEL, 255); // Yellow ON
+      ledcWrite(PWM_GREEN_CHANNEL, 255); // Green ON
+      ledcWrite(PWM_RED_CHANNEL, 255); // Red ON
+      break;
+
+    case 3: // Mode 4: PWM Fading Mode for LEDs
+      for (int dutyCycle = 0; dutyCycle <= 1024 && currentMode == 3; dutyCycle++) {
+        ledcWrite(PWM_YELLOW_CHANNEL, dutyCycle);
+        ledcWrite(PWM_GREEN_CHANNEL, dutyCycle);
+        ledcWrite(PWM_RED_CHANNEL, dutyCycle);
+        delay(5);
+        if (digitalRead(MODE_BUTTON) == LOW || digitalRead(RESET_BUTTON) == LOW) return;
+      }
+      for (int dutyCycle = 1024; dutyCycle >= 0 && currentMode == 3; dutyCycle--) {
+        ledcWrite(PWM_YELLOW_CHANNEL, dutyCycle);
+        ledcWrite(PWM_GREEN_CHANNEL, dutyCycle);
+        ledcWrite(PWM_RED_CHANNEL, dutyCycle);
+        delay(5);
+        if (digitalRead(MODE_BUTTON) == LOW || digitalRead(RESET_BUTTON) == LOW) return;
+      }
+      break;
   }
 }
