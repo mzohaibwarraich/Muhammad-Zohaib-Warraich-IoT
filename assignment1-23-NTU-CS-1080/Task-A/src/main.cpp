@@ -1,3 +1,6 @@
+// Name: Muhammad Zohaib Warraich
+// Roll no: 23-NTU-CS-1080 
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
