@@ -7,9 +7,11 @@
 </div>
 
 ---
-# Uploaded Week
+# Uploaded Tasks
 <div>
   <p>Week-1</p>
   <p>Week-4</p>
   <p>Week-5</p>
+  <p>Week-6</p>
+  <p>Assignment-1</p>
 </div>
