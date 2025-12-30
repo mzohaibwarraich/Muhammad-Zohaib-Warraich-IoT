@@ -15,7 +15,6 @@ char pass[] = "";
 const char* mqtt_server = "10.13.21.251";
 const int mqtt_port = 1883;
 
-const char* TOPIC_TEMP = "home/lab1/temp";
 const char* TOPIC_HUMIDITY = "home/lab1/humidity";
 
 // ---------- DHT ----------
@@ -65,25 +64,19 @@ void loop() {
   if (!mqtt.connected()) connectMQTT();
   mqtt.loop();
 
-  float t = dht.readTemperature();
   float h = dht.readHumidity();
 
-  if (isnan(t) || isnan(h)) {
+  if (isnan(h)) {
     Serial.println("DHT read failed");
     delay(2000);
     return;
   }
 
   char tBuf[8], hBuf[8];
-  dtostrf(t, 4, 2, tBuf);
   dtostrf(h, 4, 2, hBuf);
 
-  mqtt.publish(TOPIC_TEMP, tBuf);
   mqtt.publish(TOPIC_HUMIDITY, hBuf);
 
-  Serial.print("Publisher → Temp: ");
-  Serial.print(tBuf);
-  Serial.println(" °C");
   Serial.print("Publisher → Humidity: ");
   Serial.print(hBuf);
   Serial.println(" %");
