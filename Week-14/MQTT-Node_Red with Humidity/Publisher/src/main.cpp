@@ -12,10 +12,11 @@ char ssid[] = "Wokwi-GUEST";
 char pass[] = "";
 
 // ---------- MQTT ----------
-const char* mqtt_server = "10.153.74.84";
+const char* mqtt_server = "10.13.21.251";
 const int mqtt_port = 1883;
 
 const char* TOPIC_TEMP = "home/lab1/temp";
+const char* TOPIC_HUMIDITY = "home/lab1/humidity";
 
 // ---------- DHT ----------
 #define DHTPIN  23
@@ -78,9 +79,13 @@ void loop() {
   dtostrf(h, 4, 2, hBuf);
 
   mqtt.publish(TOPIC_TEMP, tBuf);
+  mqtt.publish(TOPIC_HUMIDITY, hBuf);
 
   Serial.print("Publisher → Temp: ");
   Serial.print(tBuf);
+  Serial.println(" °C");
+  Serial.print("Publisher → Humidity: ");
+  Serial.print(hBuf);
   Serial.println(" %");
 
   delay(5000);
