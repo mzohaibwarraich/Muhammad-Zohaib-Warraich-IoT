@@ -1,3 +1,4 @@
 .vscode
 # add all the .DS_Store files in the repository to the .gitignore file
 .DS_Store
+.pio
